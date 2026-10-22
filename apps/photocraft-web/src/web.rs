@@ -87,7 +87,10 @@ pub fn start() {
                     let (session, warnings) = crate::preset_bridge::session(presets.clone());
                     preset_warnings.extend(warnings);
                     let drag = listen_drag(&pen_target);
-                    let mut app = PhotocraftApp::new(session, services(inbox.clone(), place_inbox.clone(), drag_pos_service(pen_target.clone(), drag)));
+                    let (control, control_rx) = std::sync::mpsc::channel();
+                    let mut app = PhotocraftApp::new(session, services(inbox.clone(), place_inbox.clone(), drag_pos_service(pen_target.clone(), drag))).with_control(control_rx);
+                    // Embedded in an iframe: the parent page drives the editor (`host_bridge`).
+                    let host = crate::host_bridge::HostBridge::start(control, cc.egui_ctx.clone());
                     if !preset_warnings.is_empty() {
                         photocraft_ui_egui::notices::post(&mut app, i18n::t("Some brush presets could not be loaded"), preset_warnings, true, None);
                     }
@@ -101,7 +104,7 @@ pub fn start() {
                     }
                     let unsaved = Arc::new(AtomicBool::new(false));
                     guard_unload(unsaved.clone());
-                    Ok(Box::new(WebShell { app, inbox, place_inbox, unsaved, served, database, presets }))
+                    Ok(Box::new(WebShell { app, inbox, place_inbox, unsaved, served, database, presets, host }))
                 }),
             )
             .await;
@@ -267,6 +270,8 @@ struct WebShell {
     served: Served,
     database: Option<web_sys::IdbDatabase>,
     presets: crate::preset_bridge::Bridge,
+    /// The embedding page's requests, when PhotoCraft runs in an iframe.
+    host: Option<crate::host_bridge::HostBridge>,
 }
 
 impl WebShell {
@@ -354,7 +359,16 @@ impl eframe::App for WebShell {
             });
         }
         self.serve_fonts(ctx);
+        if let Some(host) = &mut self.host {
+            host.dispatch(&mut self.app);
+        }
         self.app.logic(ctx, frame);
+        if let Some(host) = &mut self.host {
+            host.collect();
+            if host.waiting() {
+                ctx.request_repaint();
+            }
+        }
         self.save_presets(ctx);
     }
 
