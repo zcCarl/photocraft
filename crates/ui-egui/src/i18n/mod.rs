@@ -24,6 +24,8 @@ mod catalog;
 mod system;
 
 pub use system::system_lang;
+#[cfg(all(not(test), target_arch = "wasm32"))]
+pub use system::set_browser_languages;
 
 use std::cell::Cell;
 use std::sync::OnceLock;

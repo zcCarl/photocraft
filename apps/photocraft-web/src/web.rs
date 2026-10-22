@@ -55,6 +55,12 @@ pub fn start() {
             return;
         };
         let q = query();
+        // Auto follows the browser; a host embedding the editor may pin it with `?lang=zh-Hans`.
+        let mut languages = browser_languages();
+        if let Some(lang) = query_param(&q, "lang") {
+            languages.insert(0, lang);
+        }
+        i18n::set_browser_languages(languages);
         let force_cpu = q.contains("cpu");
         let mut options = eframe::WebOptions::default();
         photocraft_ui_egui::gpu_canvas::use_adapter_limits(&mut options.wgpu_options.wgpu_setup);
@@ -201,6 +207,16 @@ fn query() -> String {
     web_sys::window().and_then(|w| w.location().search().ok()).unwrap_or_default()
 }
 
+/// A `key=value` from the page's query string (`?lang=zh-Hans&cpu`); only language-tag characters.
+fn query_param(q: &str, key: &str) -> Option<String> {
+    q.trim_start_matches('?')
+        .split('&')
+        .filter_map(|kv| kv.split_once('='))
+        .find(|(k, _)| *k == key)
+        .map(|(_, v)| v.to_string())
+        .filter(|v| !v.is_empty() && v.len() <= 35 && v.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_'))
+}
+
 /// Reads the served font manifest, if the host has one, and lists its families in the font menus.
 fn load_font_manifest(served: Served, ctx: egui::Context) {
     wasm_bindgen_futures::spawn_local(async move {
@@ -225,7 +241,10 @@ fn load_font_manifest(served: Served, ctx: egui::Context) {
         served_fonts::add_fonts(&fonts);
         // Fetch now the fallbacks of the scripts the browser's languages use (an Arabic reader gets
         // the Arabic font before typing); the rest is fetched when text or a font menu needs it.
-        served_fonts::request_for_languages(browser_languages().iter().map(String::as_str));
+        // The UI language first: its menus need the font even when the browser prefers another.
+        let mut languages = vec![i18n::current().code().to_string()];
+        languages.extend(browser_languages());
+        served_fonts::request_for_languages(languages.iter().map(String::as_str));
         ctx.request_repaint();
     });
 }
@@ -322,7 +341,7 @@ impl WebShell {
                 }
             });
         }
-        served_fonts::install(&mut self.app, arrived);
+        served_fonts::install_with_ui(&mut self.app, Some(ctx), arrived);
     }
 }
 

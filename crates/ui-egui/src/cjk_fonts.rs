@@ -81,7 +81,10 @@ impl Sources {
     #[cfg(target_arch = "wasm32")]
     pub fn system() -> Self {
         Self {
-            locale: || None,
+            locale: || match crate::i18n::current().code() {
+                code @ ("ja" | "ko" | "zh-hans" | "zh-hant") => Some(code.to_string()),
+                _ => None,
+            },
             files: |_| Vec::new(),
             last_resort: Vec::new,
             scripts: |_| Vec::new(),
@@ -407,7 +410,30 @@ pub fn install(ctx: &egui::Context) {
     install_with(ctx, Sources::system());
 }
 
+/// Script fallback fonts the web host served (`served_fonts`), kept as `(name, bytes)` so a font
+/// re-install (language or UI size change), which drops lazily added faces, registers them again.
+static SERVED_UI: std::sync::Mutex<Vec<(String, Vec<u8>)>> = std::sync::Mutex::new(Vec::new());
+
+/// Adds a served script fallback (e.g. Noto Sans SC for a Chinese UI) to every UI font family:
+/// the web build has no system fonts, so without it menus in that script draw as boxes.
+pub fn add_served_ui_font(ctx: &egui::Context, family: &str, bytes: Vec<u8>) {
+    let name = format!("{FONT_PREFIX}-served-{family}");
+    {
+        let mut served = SERVED_UI.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if served.iter().any(|(n, _)| *n == name) {
+            return;
+        }
+        served.push((name.clone(), bytes.clone()));
+    }
+    add_to_all_families(ctx, name, FontData::from_owned(bytes));
+    ctx.request_repaint();
+}
+
 pub fn install_with(ctx: &egui::Context, sources: Sources) {
+    let served = SERVED_UI.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone();
+    for (name, bytes) in served {
+        add_to_all_families(ctx, name, FontData::from_owned(bytes));
+    }
     // egui keeps the first plugin of a type. set_fonts removes loaded fallbacks, so reset the
     // existing loader too; otherwise its tried/loaded sets prevent fonts being added again.
     let mut fallback = CjkFallback::new(sources.clone());

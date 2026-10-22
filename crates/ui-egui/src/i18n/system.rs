@@ -53,8 +53,19 @@ fn detect_system_tags() -> Vec<String> {
 }
 
 #[cfg(all(not(test), target_arch = "wasm32"))]
+static BROWSER_TAGS: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+
+/// The web shell's `navigator.languages`, so Auto follows the browser. Call before the first
+/// [`system_lang`]; later calls are ignored (Auto is resolved once per session).
+#[cfg(all(not(test), target_arch = "wasm32"))]
+pub fn set_browser_languages(tags: Vec<String>) {
+    let tags = tags.into_iter().take(64).filter(|t| !t.trim().is_empty() && t.len() <= 128).collect();
+    let _ = BROWSER_TAGS.set(tags);
+}
+
+#[cfg(all(not(test), target_arch = "wasm32"))]
 fn detect_system_tags() -> Vec<String> {
-    Vec::new()
+    BROWSER_TAGS.get().cloned().unwrap_or_default()
 }
 
 #[cfg(test)]

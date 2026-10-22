@@ -18,6 +18,20 @@ static PENDING: Mutex<Vec<(DocId, LayerId)>> = Mutex::new(Vec::new());
 /// showing Photoshop's pixels (not edited yet) keeps them, as it does when its font is installed
 /// from the start. Call it every frame: it also retries the layers of a document that was busy.
 pub fn install(app: &mut PhotocraftApp, delivered: Vec<(String, Vec<u8>)>) {
+    install_with_ui(app, None, delivered);
+}
+
+/// [`install`], and with a context also registers the delivered script fallbacks (the manifest's
+/// `scripts` field) as UI fonts, so a Chinese, Japanese, Arabic… interface renders on the web.
+pub fn install_with_ui(app: &mut PhotocraftApp, ctx: Option<&egui::Context>, delivered: Vec<(String, Vec<u8>)>) {
+    if let Some(ctx) = ctx {
+        let fallbacks = photocraft_text::served::script_fallback_families();
+        for (family, bytes) in &delivered {
+            if fallbacks.contains(family) {
+                crate::cjk_fonts::add_served_ui_font(ctx, family, bytes.clone());
+            }
+        }
+    }
     let mut layers = std::mem::take(&mut *PENDING.lock().unwrap_or_else(PoisonError::into_inner));
     if !delivered.is_empty() {
         let families: Vec<String> = delivered.iter().map(|(f, _)| f.clone()).collect();
