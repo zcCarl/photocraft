@@ -12,8 +12,9 @@
 //! - `host.layers`: the active document's layers, bottom to top, with their bounds
 //! - `host.place {name, data, x?, y?, smartObject?}`: place an image as a layer whose top-left is
 //!   at `x, y` (document pixels, unscaled); without them it is centred
-//! - `host.registerPlugin {id, name, params?, note?}`: list a host plug-in under Filter › Plug-ins;
-//!   its dialog's OK posts the event `{photocraft: 1, event: "plugin.invoke", plugin, params, document}`
+//! - `host.registerPlugin {id, name, params?, note?, menu?, needsDocument?}`: list a host plug-in
+//!   under Filter › Plug-ins, or under its own top-level `menu` (shown after Filter); with
+//!   `needsDocument: false` it stays enabled with no document open. Its dialog's OK posts the event `{photocraft: 1, event: "plugin.invoke", plugin, params, document}`
 //! - `host.notify {title, lines?, error?}`: show a notice in the editor
 //! - anything else is a desktop control-channel request (`engine.execute`, `ui.inspect`, …),
 //!   forwarded to [`PhotocraftApp::with_control`]'s channel with its reply passed back
@@ -234,8 +235,13 @@ fn register_plugin(p: &Value) -> Result<Value, String> {
     if name.is_empty() || name.len() > 200 {
         return Err("`name` must be 1–200 characters".into());
     }
+    let menu = text("menu");
+    if menu.len() > 60 || menu.contains('/') {
+        return Err("`menu` must be at most 60 characters, without `/`".into());
+    }
+    let needs_document = p.get("needsDocument").and_then(Value::as_bool).unwrap_or(true);
     use photocraft_ui_egui::host_plugins::{HostPlugin, PREFIX, register};
-    register(HostPlugin { id: id.clone(), name, params: text("params"), note: text("note") });
+    register(HostPlugin { id: id.clone(), name, params: text("params"), note: text("note"), menu, needs_document });
     Ok(json!({"menu": format!("{PREFIX}{id}")}))
 }
 

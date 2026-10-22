@@ -19,6 +19,16 @@ pub(crate) fn modal_allows(app: &PhotocraftApp, id: &str) -> bool {
 /// Top-level menus in Photoshop order.
 pub const TOP_MENUS: [&str; 10] = ["File", "Edit", "Image", "Layer", "Type", "Select", "Filter", "View", "Window", "Help"];
 
+/// The menu bar's titles: [`TOP_MENUS`] with the embedding page's plug-in menus after Filter.
+pub fn top_menus() -> Vec<String> {
+    let mut tops: Vec<String> = TOP_MENUS.iter().map(|t| t.to_string()).collect();
+    let at = tops.iter().position(|t| t == "Filter").map_or(tops.len(), |i| i + 1);
+    for (k, m) in crate::host_plugins::top_menus().into_iter().filter(|m| !TOP_MENUS.contains(&m.as_str())).enumerate() {
+        tops.insert(at + k, m);
+    }
+    tops
+}
+
 /// UI-level commands (handled by the shell rather than the engine): id, label, menu, shortcut.
 /// The table is the engine's ([`photocraft_engine::shell_commands::SHELL_COMMANDS`]), so the
 /// commands and their keys exist without this UI (headless shortcut sets, lists, conflicts).
@@ -998,6 +1008,7 @@ pub fn menu_items(app: &PhotocraftApp) -> Vec<MenuItem> {
         }
     }
     crate::plugin_ui::insert_menu_items(app, &mut items);
+    items.extend(crate::host_plugins::top_menu_items(app));
     if let Some(mask) = app.session.active().and_then(|s| s.active_layer.and_then(|id| s.doc.layer(id))).and_then(|l| l.mask.as_ref())
         && let Some(item) = items.iter_mut().find(|i| i.id == "layer.layerMask.enabled")
     {
@@ -1168,8 +1179,9 @@ pub fn menu_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) -> f32 {
     let mut keys = crate::menu_keys::Keys::load(ui.ctx());
     keys.take_first_row(&mut nav);
     nav.underline = keys.show_underlines(ui.ctx());
-    let top_labels: Vec<String> = TOP_MENUS.iter().map(|top| crate::i18n::tr(lang, top).to_string()).collect();
-    let preferred: Vec<Option<char>> = TOP_MENUS.iter().map(|top| crate::menu_keys::TOP_PREFERRED.iter().find(|(t, _)| t == top).map(|(_, c)| *c)).collect();
+    let tops_list = top_menus();
+    let top_labels: Vec<String> = tops_list.iter().map(|top| crate::i18n::tr(lang, top).to_string()).collect();
+    let preferred: Vec<Option<char>> = tops_list.iter().map(|top| crate::menu_keys::TOP_PREFERRED.iter().find(|(t, _)| t == top).map(|(_, c)| *c)).collect();
     let top_mnemonics = crate::menu_keys::assign(&top_labels.iter().map(String::as_str).collect::<Vec<_>>(), &preferred);
     ui.scope(|ui| {
         ui.spacing_mut().item_spacing.x = 0.0;
@@ -1184,12 +1196,12 @@ pub fn menu_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) -> f32 {
             let ui = mirrored.as_mut().unwrap_or(ui);
             ui.spacing_mut().button_padding = egui::vec2(6.0, 3.0);
             nav.bar_bottom = Some(ui.max_rect().bottom());
-            let mut buttons = Vec::with_capacity(TOP_MENUS.len());
-            for (k, top) in TOP_MENUS.iter().enumerate() {
+            let mut buttons = Vec::with_capacity(tops_list.len());
+            for (k, top) in tops_list.iter().map(String::as_str).enumerate() {
                 // egui's menu_button toggles on release; these titles open on the press (one
                 // gesture can press, drag to an item and release), so each drives its popup.
                 // The title the keyboard is on (Alt / F10) is lit like a hovered one.
-                let focused = keys.focus == Some(if rtl { TOP_MENUS.len() - 1 - k } else { k });
+                let focused = keys.focus == Some(if rtl { tops_list.len() - 1 - k } else { k });
                 let label = if nav.underline {
                     crate::menu_keys::mnemonic_text(ui, "", &top_labels[k], top_mnemonics[k], Some(t.text_dim))
                 } else {
@@ -1210,7 +1222,7 @@ pub fn menu_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) -> f32 {
                 let opening = title.clicked() && ui.ctx().data(|d| d.get_temp::<bool>(press_gesture_id())).unwrap_or(false);
                 let close = if opening {
                     egui::PopupCloseBehavior::IgnoreClicks
-                } else if *top == "Help" {
+                } else if top == "Help" {
                     // Menus close on any click, inside them too; a click in Help's search field
                     // must keep it open. Its items close it themselves when chosen.
                     egui::PopupCloseBehavior::CloseOnClickOutside
@@ -1232,12 +1244,12 @@ pub fn menu_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) -> f32 {
                                 ItemCache { state, items }
                             })
                             .items;
-                        let mine: Vec<&MenuItem> = items.iter().filter(|i| i.path.first().map(String::as_str) == Some(*top)).collect();
+                        let mine: Vec<&MenuItem> = items.iter().filter(|i| i.path.first().map(String::as_str) == Some(top)).collect();
                         ui.set_min_width(220.0);
                         if mine.is_empty() {
                             ui.weak(crate::i18n::tr(lang, "(coming soon)"));
                         }
-                        if *top == "Help" {
+                        if top == "Help" {
                             // The search field scrolls with the rows, as part of the menu's content.
                             crate::menu_nav::level(ui, 1, &mut nav, |ui, nav| {
                                 help_search(ui, items, opening, &mut clicked, nav);

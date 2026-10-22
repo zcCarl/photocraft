@@ -31,6 +31,8 @@ pub enum Kind {
     },
     /// Free text (e.g. a file path).
     Text,
+    /// Free text typed masked (a key or password); never remembered.
+    Secret,
     /// One of the open documents (stored as its index).
     Document,
     /// A row-major grid of integers (`int[25]` = 5×5).
@@ -106,6 +108,8 @@ pub fn parse_spec(spec: &str) -> Vec<Param> {
             Kind::Bool(rest.trim_start_matches('=').trim() == "true")
         } else if v == "text" {
             Kind::Text
+        } else if v == "secret" {
+            Kind::Secret
         } else if v == "color" {
             Kind::Color(None)
         } else if let Some(default) = v.strip_prefix("color=") {
@@ -357,7 +361,7 @@ fn default_value(app: &PhotocraftApp, command: &str, p: &Param) -> Option<Value>
         }
         Kind::Bool(default) => json!(default),
         Kind::Int { default } => json!(default),
-        Kind::Text => json!(""),
+        Kind::Text | Kind::Secret => json!(""),
         Kind::Document => json!(-1),
         // Identity kernel: 1 in the centre.
         Kind::Grid(n) => json!((0..*n).map(|i| i64::from(i == *n / 2)).collect::<Vec<_>>()),
@@ -883,11 +887,12 @@ pub fn body(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
                 crate::widgets::checkbox(ui, &mut b, &label(&p.key));
                 f.insert(p.key, json!(b));
             }
-            Kind::Text => {
+            Kind::Text | Kind::Secret => {
                 let mut v = f.get(&p.key).and_then(Value::as_str).unwrap_or_default().to_string();
+                let secret = p.kind == Kind::Secret;
                 ui.horizontal(|ui| {
                     ui.label(egui::RichText::new(label(&p.key)).color(t.text_dim));
-                    ui.add(egui::TextEdit::singleline(&mut v).desired_width(200.0));
+                    ui.add(egui::TextEdit::singleline(&mut v).password(secret).desired_width(if secret { 280.0 } else { 200.0 }));
                 });
                 if v.is_empty() {
                     f.remove(&p.key);
