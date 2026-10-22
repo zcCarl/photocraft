@@ -384,6 +384,7 @@ impl eframe::App for WebShell {
         self.app.logic(ctx, frame);
         if let Some(host) = &mut self.host {
             host.collect();
+            host.events();
             if host.waiting() {
                 ctx.request_repaint();
             }

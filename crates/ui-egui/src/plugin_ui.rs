@@ -19,7 +19,9 @@ pub fn insert_menu_items(app: &PhotocraftApp, items: &mut Vec<MenuItem>) {
     // never drawn (#2540). Borrow the path of "Install Plug-in…", the item we sit above.
     let Some(path) = items.get(at).map(|i| i.path.clone()) else { return };
     let enabled = app.session.is_enabled("plugin.run");
-    let mut extra: Vec<MenuItem> = plugins
+    // The embedding page's plug-ins first (`host_plugins`), then the installed WebAssembly ones.
+    let mut extra = crate::host_plugins::menu_items(app, &path);
+    extra.extend(plugins
         .iter()
         .map(|p| {
             let m = p.manifest();
@@ -33,8 +35,7 @@ pub fn insert_menu_items(app: &PhotocraftApp, items: &mut Vec<MenuItem>) {
                 checked: None,
                 color: None,
             }
-        })
-        .collect();
+        }));
     if !extra.is_empty() {
         extra.push(MenuItem { id: "---".into(), label: "---".into(), path: path.clone(), shortcut: None, enabled: false, checked: None, color: None });
     }

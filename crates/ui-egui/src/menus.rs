@@ -147,6 +147,9 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
     if let Some(r) = crate::plugin_ui::menu(app, id, &params) {
         return r;
     }
+    if let Some(r) = crate::host_plugins::menu(app, id, &params) {
+        return r;
+    }
     if id == "window.panel.brushSettings" {
         app.ui.brush_tab = 0;
     }
@@ -711,6 +714,9 @@ pub fn is_enabled(app: &PhotocraftApp, id: &str) -> bool {
         return e;
     }
     if let Some(e) = crate::plugin_ui::is_enabled(app, id) {
+        return e;
+    }
+    if let Some(e) = crate::host_plugins::is_enabled(app, id) {
         return e;
     }
     if let Some(e) = crate::transform_tool::is_enabled(app, id) {

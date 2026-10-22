@@ -168,6 +168,7 @@ pub mod pattern_preview;
 pub mod perspective_crop_ui;
 pub mod perspective_ui;
 pub mod pixel_grid;
+pub mod host_plugins;
 pub mod plugin_ui;
 pub mod point_curve;
 pub mod prefs_ui;
@@ -1182,6 +1183,9 @@ impl PhotocraftApp {
 
     /// Run an engine command, reporting errors in the status bar.
     pub fn run(&mut self, id: &str, params: Value) -> Result<Value, String> {
+        if id.starts_with(host_plugins::PREFIX) {
+            return host_plugins::invoke(self, id, &params);
+        }
         if let Some(result) = delete_layer_prompt::intercept(self, id, &params) {
             return result;
         }

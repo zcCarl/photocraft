@@ -12,6 +12,9 @@
 //! - `host.layers`: the active document's layers, bottom to top, with their bounds
 //! - `host.place {name, data, x?, y?, smartObject?}`: place an image as a layer whose top-left is
 //!   at `x, y` (document pixels, unscaled); without them it is centred
+//! - `host.registerPlugin {id, name, params?, note?}`: list a host plug-in under Filter › Plug-ins;
+//!   its dialog's OK posts the event `{photocraft: 1, event: "plugin.invoke", plugin, params, document}`
+//! - `host.notify {title, lines?, error?}`: show a notice in the editor
 //! - anything else is a desktop control-channel request (`engine.execute`, `ui.inspect`, …),
 //!   forwarded to [`PhotocraftApp::with_control`]'s channel with its reply passed back
 
@@ -112,6 +115,15 @@ impl HostBridge {
         }
     }
 
+    /// Posts the host plug-in invocations the app queued this frame as `plugin.invoke` events.
+    pub fn events(&self) {
+        for mut invocation in photocraft_ui_egui::host_plugins::take_invocations() {
+            invocation["event"] = json!("plugin.invoke");
+            invocation["photocraft"] = json!(PROTOCOL);
+            self.send(invocation);
+        }
+    }
+
     /// Whether replies are still outstanding (the frame loop keeps running for them).
     pub fn waiting(&self) -> bool {
         !self.pending.is_empty()
@@ -137,8 +149,12 @@ impl HostBridge {
         };
         message.insert("photocraft".into(), json!(PROTOCOL));
         message.insert("id".into(), id.clone());
+        self.send(Value::Object(message));
+    }
+
+    fn send(&self, message: Value) {
         let Some(parent) = web_sys::window().and_then(|w| w.parent().ok().flatten()) else { return };
-        let text = Value::Object(message).to_string();
+        let text = message.to_string();
         match js_sys::JSON::parse(&text) {
             Ok(value) => {
                 if let Err(e) = parent.post_message(&value, &self.origin) {
@@ -197,8 +213,30 @@ fn host_method(app: &mut PhotocraftApp, method: &str, p: &Value) -> Result<Value
         "host.export" => export(app, p),
         "host.layers" => layers(app),
         "host.place" => place(app, p),
+        "host.registerPlugin" => register_plugin(p),
+        "host.notify" => {
+            let title = p.get("title").and_then(Value::as_str).ok_or("missing `title`")?;
+            let lines = p.get("lines").and_then(Value::as_array).map(|l| l.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default();
+            let error = p.get("error").and_then(Value::as_bool).unwrap_or(false);
+            Ok(json!({"notice": photocraft_ui_egui::notices::post(app, title, lines, error, None)}))
+        }
         _ => Err(format!("unknown host method `{method}`")),
     }
+}
+
+fn register_plugin(p: &Value) -> Result<Value, String> {
+    let text = |k: &str| p.get(k).and_then(Value::as_str).unwrap_or_default().to_string();
+    let id = text("id");
+    if id.is_empty() || id.len() > 100 || !id.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_')) {
+        return Err("`id` must be 1–100 characters of a-z, 0-9, . - _".into());
+    }
+    let name = text("name");
+    if name.is_empty() || name.len() > 200 {
+        return Err("`name` must be 1–200 characters".into());
+    }
+    use photocraft_ui_egui::host_plugins::{HostPlugin, PREFIX, register};
+    register(HostPlugin { id: id.clone(), name, params: text("params"), note: text("note") });
+    Ok(json!({"menu": format!("{PREFIX}{id}")}))
 }
 
 fn name_param(p: &Value) -> Result<String, String> {
