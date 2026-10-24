@@ -857,6 +857,11 @@ fn content_options(s: &mut Session, _: &Value) -> Result<Value> {
 /// The layer rendered alone (visible, its blend mode ignored) and trimmed to its pixels, as a
 /// one-layer document — what Export As does for a layer.
 pub fn layer_document(doc: &Document, id: LayerId) -> Result<Document> {
+    layer_document_at(doc, id).map(|(d, _)| d)
+}
+
+/// [`layer_document`] and the canvas position of its top-left pixel.
+pub fn layer_document_at(doc: &Document, id: LayerId) -> Result<(Document, (i32, i32))> {
     let l = doc.layer(id).ok_or(EngineError::NoLayer(id))?;
     let mut alone = l.clone();
     alone.visible = true;
@@ -892,7 +897,7 @@ pub fn layer_document(doc: &Document, id: LayerId) -> Result<Document> {
         .collect();
     surf.write_region(Rect::from_xywh(0, 0, b.width(), b.height()), &rows);
     out.layers.push(Layer::new(l.name.clone(), LayerContent::Raster(surf)));
-    Ok(out)
+    Ok((out, (b.x0, b.y0)))
 }
 
 fn export_layer(s: &mut Session, p: &Value, cmd: &str, png_only: bool) -> Result<Value> {

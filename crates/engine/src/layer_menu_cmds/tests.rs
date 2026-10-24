@@ -370,6 +370,7 @@ fn export_layer_trims_to_its_pixels() {
     paint(&mut s, |x, y| if (5..15).contains(&x) && (4..10).contains(&y) { [1.0, 0.0, 0.0, 1.0] } else { [0.0; 4] });
     let d = layer_document(doc(&s), active(&s).id).unwrap();
     assert_eq!((d.size.width, d.size.height), (10, 6));
+    assert_eq!(layer_document_at(doc(&s), active(&s).id).unwrap().1, (5, 4));
     assert_eq!(d.layers[0].surface().unwrap().rgba(0, 0), [1.0, 0.0, 0.0, 1.0]);
     let dir = std::env::temp_dir().join(format!("pc-layer-export-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();

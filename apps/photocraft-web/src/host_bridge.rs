@@ -268,9 +268,10 @@ fn export(app: &PhotocraftApp, p: &Value) -> Result<Value, String> {
         None | Some(Value::Null) => None,
         Some(v) => Some(photocraft_doc::LayerId(v.as_u64().ok_or("`layer` must be a layer id")?)),
     };
-    let doc = match layer {
-        Some(id) => photocraft_engine::layer_menu_cmds::layer_document(&state.doc, id).map_err(|e| e.to_string())?,
-        None => (*state.doc).clone(),
+    // A layer is trimmed to its pixels; `left`/`top` say where they sit on the canvas.
+    let (doc, (left, top)) = match layer {
+        Some(id) => photocraft_engine::layer_menu_cmds::layer_document_at(&state.doc, id).map_err(|e| e.to_string())?,
+        None => ((*state.doc).clone(), (0, 0)),
     };
     // `base.png` exports as `base.psd`, not `base.png.psd`.
     let stem = std::path::Path::new(&doc.name).file_stem().and_then(|s| s.to_str()).filter(|s| !s.is_empty());
@@ -280,6 +281,8 @@ fn export(app: &PhotocraftApp, p: &Value) -> Result<Value, String> {
         "name": name,
         "width": doc.size.width,
         "height": doc.size.height,
+        "left": left,
+        "top": top,
         "data": base64::engine::general_purpose::STANDARD.encode(&out.bytes),
         "warnings": out.warnings,
     }))
