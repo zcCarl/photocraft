@@ -15,6 +15,9 @@
 //! - `host.registerPlugin {id, name, params?, note?, menu?, needsDocument?}`: list a host plug-in
 //!   under Filter › Plug-ins, or under its own top-level `menu` (shown after Filter); with
 //!   `needsDocument: false` it stays enabled with no document open. Its dialog's OK posts the event `{photocraft: 1, event: "plugin.invoke", plugin, params, document}`
+//! - `host.panel {id, title, open?, toolbar?, message?, messageError?, rows?, empty?, pager?,
+//!   footer?}`: show or update a floating panel; replies `{open}`. Row actions and close post
+//!   `{event: "panel.action", panel, action, row}` or `{event: "panel.closed", panel}`.
 //! - `host.notify {title, lines?, error?}`: show a notice in the editor
 //! - anything else is a desktop control-channel request (`engine.execute`, `ui.inspect`, …),
 //!   forwarded to [`PhotocraftApp::with_control`]'s channel with its reply passed back
@@ -123,6 +126,10 @@ impl HostBridge {
             invocation["photocraft"] = json!(PROTOCOL);
             self.send(invocation);
         }
+        for mut event in photocraft_ui_egui::host_panels::take_events() {
+            event["photocraft"] = json!(PROTOCOL);
+            self.send(event);
+        }
     }
 
     /// Whether replies are still outstanding (the frame loop keeps running for them).
@@ -215,6 +222,7 @@ fn host_method(app: &mut PhotocraftApp, method: &str, p: &Value) -> Result<Value
         "host.layers" => layers(app),
         "host.place" => place(app, p),
         "host.registerPlugin" => register_plugin(p),
+        "host.panel" => photocraft_ui_egui::host_panels::update(p),
         "host.notify" => {
             let title = p.get("title").and_then(Value::as_str).ok_or("missing `title`")?;
             let lines = p.get("lines").and_then(Value::as_array).map(|l| l.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default();

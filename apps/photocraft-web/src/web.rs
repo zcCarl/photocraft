@@ -110,7 +110,7 @@ pub fn start() {
                     }
                     let unsaved = Arc::new(AtomicBool::new(false));
                     guard_unload(unsaved.clone());
-                    Ok(Box::new(WebShell { app, inbox, place_inbox, unsaved, served, database, presets, host }))
+                    Ok(Box::new(WebShell { app, inbox, place_inbox, unsaved, served, database, presets, host, last_screen_mode: "standard".into(), was_browser_full: false }))
                 }),
             )
             .await;
@@ -291,6 +291,10 @@ struct WebShell {
     presets: crate::preset_bridge::Bridge,
     /// The embedding page's requests, when PhotoCraft runs in an iframe.
     host: Option<crate::host_bridge::HostBridge>,
+    /// Last screen mode (standard/fullScreenWithMenuBar/fullScreen) for web fullscreen tracking.
+    last_screen_mode: String,
+    /// The browser was in full screen since the last screen mode change.
+    was_browser_full: bool,
 }
 
 impl WebShell {
@@ -417,7 +421,44 @@ impl eframe::App for WebShell {
             });
         }
         self.app.ui(ui, frame);
+        self.sync_fullscreen();
         self.save_presets(ui.ctx());
+    }
+}
+
+impl WebShell {
+    /// eframe's web runner drops `ViewportCommand::Fullscreen`, so View › Screen Mode (F) drives the
+    /// browser's Fullscreen API here: both full-screen modes take the whole display, as on the
+    /// desktop. It runs in the frame that handled the click or key, while the browser still counts
+    /// it as a user gesture. Leaving full screen in the browser (Esc) returns to Standard Screen
+    /// Mode. An embedding iframe needs `allow="fullscreen"`; without it the editor still hides its
+    /// chrome inside the frame.
+    fn sync_fullscreen(&mut self) {
+        let Some(document) = web_sys::window().and_then(|w| w.document()) else { return };
+        let mode = self.app.ui.view.screen_mode.clone();
+        let browser_full = document.fullscreen_element().is_some();
+        if mode != self.last_screen_mode {
+            let want = mode != "standard";
+            if want && !browser_full {
+                if let Some(root) = document.document_element()
+                    && let Err(e) = root.request_fullscreen()
+                {
+                    log::warn!("full screen refused: {e:?}");
+                }
+            } else if !want && browser_full {
+                document.exit_fullscreen();
+            }
+            self.last_screen_mode = mode;
+            self.was_browser_full = false;
+        } else if browser_full {
+            self.was_browser_full = true;
+        } else if self.was_browser_full && mode != "standard" {
+            // The browser left full screen on its own (Esc, F11, the page lost focus).
+            self.app.ui.view.screen_mode = "standard".into();
+            self.app.ui.panels.full_screen_chrome = false;
+            self.last_screen_mode = "standard".into();
+            self.was_browser_full = false;
+        }
     }
 }
 

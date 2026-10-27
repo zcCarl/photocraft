@@ -168,6 +168,7 @@ pub mod pattern_preview;
 pub mod perspective_crop_ui;
 pub mod perspective_ui;
 pub mod pixel_grid;
+pub mod host_panels;
 pub mod host_plugins;
 pub mod plugin_ui;
 pub mod point_curve;
@@ -2269,6 +2270,7 @@ impl eframe::App for PhotocraftApp {
         gradient_ui::editor_window(self, &ctx);
         type_panels_ui::windows(self, &ctx);
         analysis_ui::windows(self, &ctx);
+        host_panels::windows(self, &ctx);
         timeline_ui::windows(self, &ctx);
         workspace_ui::windows(self, &ctx);
         palette::show(self, &ctx);
